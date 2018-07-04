@@ -85,7 +85,21 @@ def build_network(output_units, hidden_layers, units_per_layer):
     return model
 
 
-def main(env_name, expert_rollouts, nn_hidden_layers=2, nn_units_per_layer=64):
+def report_results(expert_returns, novice_returns, config):
+    with open('results.txt', 'a') as f:
+        f.write('{}: {} demonstrations, network size {}, {} epochs'.format(config['env'], config['demos'],
+                                                                           config['nn_size'], config['epochs']))
+        f.write('===================================')
+        f.write('Agent | Mean Return | Std of Return')
+        f.write('Expert {:2f} {:2f}'.format(np.mean(expert_returns), np.std(expert_returns)))
+        f.write('Novice {:2f} {:2f}'.format(np.mean(novice_returns), np.std(novice_returns)))
+        f.write('___________________________________')
+
+
+def main(env_name, expert_rollouts, nn_hidden_layers=2, nn_units_per_layer=64, epochs=5):
+    if os.path.exists('results.txt'):
+        os.remove('results.txt')
+
     expert = env_name.split('-')[0]
     training_data = generate_expert_data('experts/{}-v1.pkl'.format(expert), env_name, num_rollouts=expert_rollouts)
 
@@ -93,9 +107,16 @@ def main(env_name, expert_rollouts, nn_hidden_layers=2, nn_units_per_layer=64):
     behavioural_clone = build_network(action_dim, nn_hidden_layers, nn_units_per_layer)
 
     print('train clone')
-    behavioural_clone.fit(training_data['observations'], training_data['actions'].reshape([-1, action_dim]), epochs=5,
+    behavioural_clone.fit(training_data['observations'], training_data['actions'].reshape([-1, action_dim]),
+                          epochs=epochs,
                           batch_size=64)
-    roll_out(env_name, policy_fn=lambda x: behavioural_clone.predict(x), render=True)
+    novice_data = roll_out(env_name, policy_fn=lambda x: behavioural_clone.predict(x), render=True)
+
+    config = {'env': env_name,
+              'demos': training_data['observations'].shape[0],
+              'nn_size': '({}x{})'.format(nn_hidden_layers, nn_units_per_layer),
+              'epochs': epochs}
+    report_results(training_data['returns'], novice_data['returns'], config)
 
 
 if __name__ == "__main__":
