@@ -1,9 +1,9 @@
-import os
 from random import random
 
 import gym
 # os.chdir(os.path.join(os.path.abspath(os.path.curdir), "hw1/"))
 import load_policy
+import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
 import tf_util
@@ -56,15 +56,13 @@ def build_network(output_units, hidden_layers, units_per_layer):
 
 
 def report_results(expert_returns, novice_returns, config):
-    with open('dagger_results.txt', 'a') as f:
-        f.write('{}: {} demonstrations, network size {}, {} epochs \n'.format(config['env'], config['demos'],
+    plt.plot(novice_returns)
+    plt.plot(expert_returns)
+    plt.xlabel('Rollout')
+    plt.ylabel('Return')
+    plt.title('{}: {} demonstrations, network size {}, {} epochs \n'.format(config['env'], config['demos'],
                                                                               config['nn_size'], config['epochs']))
-        f.write('-----------------------------------\n')
-        f.write('Agent | Mean Return | Std of Return\n')
-        f.write('===================================\n')
-        f.write('Expert | {:.2f} | {:.2f}\n'.format(np.mean(expert_returns), np.std(expert_returns)))
-        f.write('Novice | {:.2f} | {:.2f}\n'.format(np.mean(novice_returns), np.std(novice_returns)))
-        f.write('-----------------------------------\n\n')
+    plt.savefig('dagger_result.png')
 
 
 def dagger(env_name, num_rollouts=20, max_timesteps=1000, beta_base=0.5, nn_hidden_layers=2, nn_units_per_layer=64,
@@ -82,7 +80,11 @@ def dagger(env_name, num_rollouts=20, max_timesteps=1000, beta_base=0.5, nn_hidd
     action_dim = env.action_space.shape[0]
     novice_policy = build_network(action_dim, nn_hidden_layers, nn_units_per_layer)
 
-    policy = lambda x: expert_policy(x) if get_beta() >= random() else novice_policy.predict(x)
+    def policy(x):
+        if get_beta() >= random():
+            return expert_policy(x)
+        else:
+            return novice_policy.predict(x)
 
     with tf.Session():
         tf_util.initialize()
@@ -103,7 +105,7 @@ def dagger(env_name, num_rollouts=20, max_timesteps=1000, beta_base=0.5, nn_hidd
                     data_set[key] = np.vstack((data_set[key], data[key]))
 
             # Update the novice policy
-            novice_policy.fit(data_set['observations'], data_set['actions'], epochs=epochs, batch_size=64)
+            novice_policy.fit(data_set['observations'], data_set['actions'], verbose=2, epochs=epochs, batch_size=64)
 
     print('reporting results')
     config = {'env': env_name,
@@ -116,14 +118,4 @@ def dagger(env_name, num_rollouts=20, max_timesteps=1000, beta_base=0.5, nn_hidd
 
 
 if __name__ == "__main__":
-    if os.path.exists('dagger_results.txt'):
-        os.remove('dagger_results.txt')
-
-    for env in ('Ant-v2', 'HalfCheetah-v2', 'Hopper-v2', 'Humanoid-v2', 'Reacher-v2', 'Walker2d-v2'):
-        dagger(env)
-
-    # # Grid search over neural net size to see if there is a better config for Humanoid
-    # for num_rollouts in (200, 500):
-    #     for num_layers in (1, 2, 3):
-    #         for layer_size in (32, 64, 128, 256, 512, 1024):
-    #             main('Humanoid-v2', num_rollouts, num_layers, layer_size)
+    pi = dagger('Humanoid-v2', num_rollouts=200, nn_units_per_layer=256)
