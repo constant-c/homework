@@ -1,4 +1,9 @@
-import pickle, tensorflow as tf, tf_util, numpy as np
+import numpy as np
+import pickle
+import tensorflow as tf
+
+import tf_util as tf_util
+
 
 def load_policy(filename):
     with open(filename, 'rb') as f:
