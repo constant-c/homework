@@ -72,11 +72,12 @@ def roll_out(env_name, policy_fn, render=False, max_timesteps=1000, num_rollouts
             'returns': np.array(returns)}
 
 
-def build_network():
+def build_network(output_units, hidden_layers, units_per_layer):
     model = Sequential()
-    model.add(Dense(units=64, activation='relu'))
-    model.add(Dense(units=64, activation='relu'))
-    model.add(Dense(units=17))
+    for _ in range(hidden_layers):
+        model.add(Dense(units=units_per_layer, activation='relu'))
+
+    model.add(Dense(units=output_units))
 
     model.compile(loss='mean_squared_error',
                   optimizer='adam',
@@ -84,14 +85,18 @@ def build_network():
     return model
 
 
-def main(env_name):
-    training_data = generate_expert_data('experts/Humanoid-v1.pkl', 'Humanoid-v2', max_timesteps=1500, num_rollouts=60)
-    behavioural_clone = build_network()
+def main(env_name, expert_rollouts, nn_hidden_layers=2, nn_units_per_layer=64):
+    expert = env_name.split('-')[0]
+    training_data = generate_expert_data('experts/{}-v1.pkl'.format(expert), env_name, num_rollouts=expert_rollouts)
+
+    action_dim = training_data['actions'][0].shape[1]
+    behavioural_clone = build_network(action_dim, nn_hidden_layers, nn_units_per_layer)
+
     print('train clone')
-    behavioural_clone.fit(training_data['observations'], training_data['actions'].reshape([-1, 17]), epochs=5,
+    behavioural_clone.fit(training_data['observations'], training_data['actions'].reshape([-1, action_dim]), epochs=5,
                           batch_size=64)
     roll_out(env_name, policy_fn=lambda x: behavioural_clone.predict(x), render=True)
 
 
 if __name__ == "__main__":
-    main('Humanoid-v2')
+    main('Humanoid-v2', expert_rollouts=500)
