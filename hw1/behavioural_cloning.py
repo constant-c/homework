@@ -86,20 +86,18 @@ def build_network(output_units, hidden_layers, units_per_layer):
 
 
 def report_results(expert_returns, novice_returns, config):
-    with open('results.txt', 'a') as f:
-        f.write('{}: {} demonstrations, network size {}, {} epochs'.format(config['env'], config['demos'],
+    with open('behavioural_cloning_results.txt', 'a') as f:
+        f.write('{}: {} demonstrations, network size {}, {} epochs \n'.format(config['env'], config['demos'],
                                                                            config['nn_size'], config['epochs']))
-        f.write('===================================')
-        f.write('Agent | Mean Return | Std of Return')
-        f.write('Expert {:2f} {:2f}'.format(np.mean(expert_returns), np.std(expert_returns)))
-        f.write('Novice {:2f} {:2f}'.format(np.mean(novice_returns), np.std(novice_returns)))
-        f.write('___________________________________')
+        f.write('-----------------------------------\n')
+        f.write('Agent | Mean Return | Std of Return\n')
+        f.write('===================================\n')
+        f.write('Expert | {:.2f} | {:.2f}\n'.format(np.mean(expert_returns), np.std(expert_returns)))
+        f.write('Novice | {:.2f} | {:.2f}\n'.format(np.mean(novice_returns), np.std(novice_returns)))
+        f.write('-----------------------------------\n\n')
 
 
 def main(env_name, expert_rollouts, nn_hidden_layers=2, nn_units_per_layer=64, epochs=5):
-    if os.path.exists('results.txt'):
-        os.remove('results.txt')
-
     expert = env_name.split('-')[0]
     training_data = generate_expert_data('experts/{}-v1.pkl'.format(expert), env_name, num_rollouts=expert_rollouts)
 
@@ -108,9 +106,9 @@ def main(env_name, expert_rollouts, nn_hidden_layers=2, nn_units_per_layer=64, e
 
     print('train clone')
     behavioural_clone.fit(training_data['observations'], training_data['actions'].reshape([-1, action_dim]),
-                          epochs=epochs,
-                          batch_size=64)
-    novice_data = roll_out(env_name, policy_fn=lambda x: behavioural_clone.predict(x), render=True)
+                          epochs=epochs, batch_size=64)
+    print('test clone')
+    novice_data = roll_out(env_name, policy_fn=lambda x: behavioural_clone.predict(x), render=False)
 
     config = {'env': env_name,
               'demos': training_data['observations'].shape[0],
@@ -120,4 +118,14 @@ def main(env_name, expert_rollouts, nn_hidden_layers=2, nn_units_per_layer=64, e
 
 
 if __name__ == "__main__":
-    main('Humanoid-v2', expert_rollouts=500)
+    if os.path.exists('behavioural_cloning_results.txt'):
+        os.remove('behavioural_cloning_results.txt')
+
+    for env in ('Ant-v2', 'HalfCheetah-v2', 'Hopper-v2', 'Humanoid-v2', 'Reacher-v2', 'Walker2d-v2'):
+        main(env, expert_rollouts=200)
+
+    # # Grid search over neural net size to see if there is a better config for Humanoid
+    # for num_rollouts in (200, 500):
+    #     for num_layers in (1, 2, 3):
+    #         for layer_size in (32, 64, 128, 256, 512, 1024):
+    #             main('Humanoid-v2', num_rollouts, num_layers, layer_size)
