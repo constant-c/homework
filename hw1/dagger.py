@@ -67,7 +67,11 @@ def report_results(expert_returns, novice_returns, config):
         f.write('-----------------------------------\n\n')
 
 
-def dagger(env_name, num_rollouts=20, max_timesteps=1000, beta=1, nn_hidden_layers=2, nn_units_per_layer=64, epochs=5):
+def dagger(env_name, num_rollouts=20, max_timesteps=1000, beta_base=0.5, nn_hidden_layers=2, nn_units_per_layer=64,
+           epochs=5):
+    def get_beta():
+        return pow(beta_base, i)
+
     data_set = None
 
     print('loading and building expert policy')
@@ -78,41 +82,45 @@ def dagger(env_name, num_rollouts=20, max_timesteps=1000, beta=1, nn_hidden_laye
     action_dim = env.action_space.shape[0]
     novice_policy = build_network(action_dim, nn_hidden_layers, nn_units_per_layer)
 
-    def get_beta():
-        return pow(0.5, i)
-
     policy = lambda x: expert_policy(x) if get_beta() >= random() else novice_policy.predict(x)
-    for i in range(num_rollouts):
-        print("Rollout: %i/%i" % (i, num_rollouts))
 
-        with tf.Session():
-            tf_util.initialize()
+    with tf.Session():
+        tf_util.initialize()
+
+        # Run DAgger
+        for i in range(num_rollouts):
+
+            print("Rollout: %i/%i" % (i, num_rollouts))
+
             data = roll_out(env_name, policy, max_timesteps=max_timesteps)
             data['actions'] = expert_policy(data['observations'])
 
-        if data_set is None:
-            data_set = data
-        else:
-            for key in ('observations', 'actions', 'returns'):
-                data_set[key] = np.vstack((data_set[key], data[key]))
+            # Aggregate data
+            if data_set is None:
+                data_set = data
+            else:
+                for key in ('observations', 'actions', 'returns'):
+                    data_set[key] = np.vstack((data_set[key], data[key]))
 
-        novice_policy.fit(data_set['observations'], data_set['actions'], epochs=epochs, batch_size=64)
+            # Update the novice policy
+            novice_policy.fit(data_set['observations'], data_set['actions'], epochs=epochs, batch_size=64)
 
+    print('reporting results')
     config = {'env': env_name,
               'demos': data_set['observations'].shape[0],
               'nn_size': '({}x{})'.format(nn_hidden_layers, nn_units_per_layer),
               'epochs': epochs}
     report_results(data_set['returns'][0], data_set['returns'], config)
 
+    return novice_policy
+
 
 if __name__ == "__main__":
     if os.path.exists('dagger_results.txt'):
         os.remove('dagger_results.txt')
 
-    dagger('Ant-v2', num_rollouts=2, )
-
-    # for env in ('Ant-v2', 'HalfCheetah-v2', 'Hopper-v2', 'Humanoid-v2', 'Reacher-v2', 'Walker2d-v2'):
-    #     main(env, expert_rollouts=200)
+    for env in ('Ant-v2', 'HalfCheetah-v2', 'Hopper-v2', 'Humanoid-v2', 'Reacher-v2', 'Walker2d-v2'):
+        dagger(env)
 
     # # Grid search over neural net size to see if there is a better config for Humanoid
     # for num_rollouts in (200, 500):
